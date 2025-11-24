@@ -1308,7 +1308,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a6592cff144e4f049b9ab5479776f005, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  RandomSeed: 2354
+  RandomSeed: 1311825
   Width: 128
   Depth: 128
   MaxHeight: 100
@@ -1325,6 +1325,7 @@ MonoBehaviour:
   grassStart: -7
   sandStart: -10
   objectGenerator: {fileID: 776588586}
+  generationRadius: 2
 --- !u!1 &3510008646534911648
 GameObject:
   m_ObjectHideFlags: 0
