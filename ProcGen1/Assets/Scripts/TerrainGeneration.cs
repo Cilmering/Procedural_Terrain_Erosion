@@ -28,6 +28,10 @@ public class TerrainGeneration : MonoBehaviour
     public ObjectGenerator objectGenerator;
     public int generationRadius = 2; // desired radius (1 = 1 chunk, 2 = 3x3, 3 = 5x5, etc.)
 
+    [Header("Erosion")]
+    public Erosion erosion; // optional erosion component
+    public int erosionIterations = 0; // number of droplets to simulate per chunk
+
     private GameObject mRealTerrain;
     private NoiseAlgorithm mTerrainNoise;
     private GameObject mLight;
@@ -83,16 +87,38 @@ public class TerrainGeneration : MonoBehaviour
                 chunkNoise.InitializeNoise(Width + 1, Depth + 1, RandomSeed);
 
                 // Offset the noise sampling
-                float chunkOffsetX = dx * Width;
-                float chunkOffsetZ = dz * Depth;
+                int sampleOffsetX = dx * Width;
+                int sampleOffsetZ = dz * Depth;
                 chunkNoise.InitializePerlinNoise(Frequency, Amplitude, Octaves, 
                     Lacunarity, Gain, Scale, NormalizeBias);
                 NativeArray<float> terrainHeightMap = new NativeArray<float>((Width + 1) * (Depth + 1), Allocator.Persistent);
-                chunkNoise.setNoise(terrainHeightMap, (int)chunkOffsetX, (int)chunkOffsetZ);
+                chunkNoise.setNoise(terrainHeightMap, sampleOffsetX, sampleOffsetZ);
+
+                // If erosion specified, run it on a managed copy of the heightmap
+                if (erosion != null && erosionIterations > 0)
+                {
+                    int mapSize = Width + 1; // number of nodes along one side
+                    int len = terrainHeightMap.Length;
+                    float[] managed = new float[len];
+                    for (int i = 0; i < len; i++) managed[i] = terrainHeightMap[i];
+
+                    // Use a deterministic per-chunk seed so neighboring chunks differ
+                    int originalSeed = erosion.seed;
+                    erosion.seed = RandomSeed + sampleOffsetX * 73856093 ^ sampleOffsetZ * 19349663;
+
+                    // Erode: map uses indexing x * mapSize + z
+                    erosion.Erode(managed, mapSize, erosionIterations, true);
+
+                    // restore seed
+                    erosion.seed = originalSeed;
+
+                    // copy back into NativeArray
+                    for (int i = 0; i < len; i++) terrainHeightMap[i] = managed[i];
+                }
 
                 // Create the mesh and set it to a new terrain GameObject
                 GameObject chunkTerrain = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                chunkTerrain.transform.position = new Vector3(chunkOffsetX, 0, chunkOffsetZ);
+                chunkTerrain.transform.position = new Vector3(sampleOffsetX, 0, sampleOffsetZ);
                 MeshRenderer meshRenderer = chunkTerrain.GetComponent<MeshRenderer>();
                 MeshFilter meshFilter = chunkTerrain.GetComponent<MeshFilter>();
                 meshRenderer.material = TerrainMaterial;
@@ -107,8 +133,12 @@ public class TerrainGeneration : MonoBehaviour
                 }
                 meshCollider.sharedMesh = meshFilter.mesh;
 
-                // Generate objects for this chunk
-                objectGenerator.GenerateObjects(chunkOffsetX, chunkOffsetX + Width, chunkOffsetZ, chunkOffsetZ + Depth);
+                // Generate objects for this chunk (world-space bounds)
+                float areaXMin = sampleOffsetX;
+                float areaXMax = sampleOffsetX + Width;
+                float areaZMin = sampleOffsetZ;
+                float areaZMax = sampleOffsetZ + Depth;
+                objectGenerator.GenerateObjects(areaXMin, areaXMax, areaZMin, areaZMax);
             }
         }
         NoiseAlgorithm.OnExit();

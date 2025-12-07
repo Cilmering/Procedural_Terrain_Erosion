@@ -5689,7 +5689,7 @@ MonoBehaviour:
   snowThreshold: 15
   rockThreshold: 5
   treeThreshold: -7
-  numberOfObjects: 300
+  numberOfObjects: 1000
   raycastHeight: 100
 --- !u!1 &784571676
 GameObject:
@@ -13814,6 +13814,62 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1854300055}
   m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1866041029
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1866041031}
+  - component: {fileID: 1866041030}
+  m_Layer: 0
+  m_Name: Erosion
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1866041030
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1866041029}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2265dcd84b313ce4098d43a79fe9ad29, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  seed: 0
+  erosionRadius: 3
+  inertia: 0.05
+  sedimentCapacityFactor: 4
+  minSedimentCapacity: 0.01
+  erodeSpeed: 0.3
+  depositSpeed: 0.3
+  evaporateSpeed: 0.01
+  gravity: 4
+  maxDropletLifetime: 30
+  initialWaterVolume: 1
+  initialSpeed: 1
+--- !u!4 &1866041031
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1866041029}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1882842616
 GameObject:
   m_ObjectHideFlags: 0
@@ -16216,6 +16272,8 @@ MonoBehaviour:
   sandStart: -10
   objectGenerator: {fileID: 776588586}
   generationRadius: 2
+  erosion: {fileID: 1866041030}
+  erosionIterations: 200000
 --- !u!1 &3510008646534911648
 GameObject:
   m_ObjectHideFlags: 0
@@ -16446,6 +16504,7 @@ SceneRoots:
   - {fileID: 3094815076975056337}
   - {fileID: 3901642456305448945}
   - {fileID: 4882970390672678078}
+  - {fileID: 1866041031}
   - {fileID: 5479508610029973443}
   - {fileID: 776588585}
   - {fileID: 974706800}
