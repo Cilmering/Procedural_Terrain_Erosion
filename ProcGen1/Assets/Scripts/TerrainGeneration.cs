@@ -127,90 +127,83 @@ public class TerrainGeneration : MonoBehaviour
     {
         int width = Width + 1, depth = Depth + 1;
         int height = MaxHeight;
-        int indicesIndex = 0;
-        int vertexIndex = 0;
-        int vertexMultiplier = 4; // create quads to fit uv's to so we can use more than one uv (4 vertices to a quad)
 
         Mesh terrainMesh = new Mesh();
-        List<Vector3> vert = new List<Vector3>(width * depth * vertexMultiplier);
+        terrainMesh.indexFormat = IndexFormat.UInt32; // support large meshes
+
+        List<Vector3> vert = new List<Vector3>(width * depth * 4);
         List<int> indices = new List<int>(width * depth * 6);
-        List<Vector2> uvs = new List<Vector2>(width * depth);
-        for (int x = 0; x < width; x++)
+        List<Vector2> uvs = new List<Vector2>(width * depth * 4);
+
+        int vertexIndex = 0;
+        const float inset = 0.001f; // small inset to avoid bilinear bleeding between atlas tiles
+
+        for (int x = 0; x < width - 1; x++)
         {
-            for (int z = 0; z < depth; z++)
+            for (int z = 0; z < depth - 1; z++)
             {
-                if (x < width - 1 && z < depth - 1)
+                // heights for this quad's corners
+                float y00 = heightMap[(x) * (width) + (z)] * height - (MaxHeight / 2.0f);
+                float y10 = heightMap[(x + 1) * (width) + (z)] * height - (MaxHeight / 2.0f);
+                float y01 = heightMap[(x) * (width) + (z + 1)] * height - (MaxHeight / 2.0f);
+                float y11 = heightMap[(x + 1) * (width) + (z + 1)] * height - (MaxHeight / 2.0f);
+
+                // add four vertices for this quad (positions)
+                vert.Add(new Vector3(x, y00, z));           // v00
+                vert.Add(new Vector3(x, y01, z + 1));       // v01
+                vert.Add(new Vector3(x + 1, y10, z));       // v10
+                vert.Add(new Vector3(x + 1, y11, z + 1));   // v11
+
+                // pick tile based on average height of the quad to avoid mixing tiles across a single quad
+                float avgY = (y00 + y01 + y10 + y11) * 0.25f;
+
+                float u0, v0, u1, v1;
+                if (avgY >= snowStart)
                 {
-                    // note: since perlin goes up to 1.0 multiplying by a height will tend to set
-                    // the average around maxheight/2. We remove most of that extra by subtracting maxheight/2
-                    // so our ground isn't always way up in the air
-                    float y = heightMap[(x) * (width) + (z)] * height - (MaxHeight/2.0f);
-                    float useAltXPlusY = heightMap[(x + 1) * (width) + (z)] * height - (MaxHeight/2.0f);
-                    float useAltZPlusY = heightMap[(x) * (width) + (z + 1)] * height- (MaxHeight/2.0f);
-                    float useAltXAndZPlusY = heightMap[(x + 1) * (width) + (z + 1)] * height- (MaxHeight/2.0f);
-                    
-                    vert.Add(new float3(x, y, z));
-                    vert.Add(new float3(x, useAltZPlusY, z + 1)); 
-                    vert.Add(new float3(x + 1, useAltXPlusY, z));  
-                    vert.Add(new float3(x + 1, useAltXAndZPlusY, z + 1)); 
-                    
-                    // add uv's
-
-                    if (y >= snowStart)
-                    {
-                        uvs.Add(new Vector2(0f, 0.75f));
-                        uvs.Add(new Vector2(0f, 1f));
-                        uvs.Add(new Vector2(0.25f, 0.75f));
-                        uvs.Add(new Vector2(0.25f, 1f));
-                    } else if (y >= rockStart)
-                    {
-                        uvs.Add(new Vector2(0.5f, 0.5f));
-                        uvs.Add(new Vector2(0.5f, 0.75f));
-                        uvs.Add(new Vector2(0.75f, 0.5f));
-                        uvs.Add(new Vector2(0.75f, 0.75f));
-                    }
-                    else if (y >= grassStart)
-                    {
-                        // remember to give it all 4 sides of the image coords
-                        uvs.Add(new Vector2(0.75f, 0.0f));
-                        uvs.Add(new Vector2(0.75f, 0.25f));
-                        uvs.Add(new Vector2(1f, 0.0f));
-                        uvs.Add(new Vector2(1f, 0.25f));
-                    }
-                    else
-                    {
-                        // remember to give it all 4 sides of the image coords
-                        uvs.Add(new Vector2(0.75f, 0.5f));
-                        uvs.Add(new Vector2(0.75f, 0.75f));
-                        uvs.Add(new Vector2(1f, 0.5f));
-                        uvs.Add(new Vector2(1f, 0.75f));
-                    }
-
-
-                    // front or top face indices for a quad
-                    //0,2,1,0,3,2
-                    indices.Add(vertexIndex);
-                    indices.Add(vertexIndex + 1);
-                    indices.Add(vertexIndex + 2);
-                    indices.Add(vertexIndex + 3);
-                    indices.Add(vertexIndex + 2);
-                    indices.Add(vertexIndex + 1);
-                    indicesIndex += 6;
-                    vertexIndex += vertexMultiplier;
+                    u0 = 0f; v0 = 0.75f; u1 = 0.25f; v1 = 1f;
                 }
-            }
+                else if (avgY >= rockStart)
+                {
+                    u0 = 0.5f; v0 = 0.5f; u1 = 0.75f; v1 = 0.75f;
+                }
+                else if (avgY >= grassStart)
+                {
+                    u0 = 0.75f; v0 = 0f; u1 = 1f; v1 = 0.25f;
+                }
+                else
+                {
+                    u0 = 0.75f; v0 = 0.5f; u1 = 1f; v1 = 0.75f;
+                }
 
+                // inset UVs slightly to avoid sampling neighboring tiles due to filtering
+                u0 += inset; v0 += inset; u1 -= inset; v1 -= inset;
+
+                // assign same tile corners to all four vertices of the quad
+                uvs.Add(new Vector2(u0, v0)); // v00
+                uvs.Add(new Vector2(u0, v1)); // v01
+                uvs.Add(new Vector2(u1, v0)); // v10
+                uvs.Add(new Vector2(u1, v1)); // v11
+
+                // add indices for two triangles (v00, v01, v10) and (v10, v01, v11)
+                indices.Add(vertexIndex);
+                indices.Add(vertexIndex + 1);
+                indices.Add(vertexIndex + 2);
+
+                indices.Add(vertexIndex + 2);
+                indices.Add(vertexIndex + 1);
+                indices.Add(vertexIndex + 3);
+
+                vertexIndex += 4;
+            }
         }
-        
-        // set the terrain var's for the mesh
+
         terrainMesh.vertices = vert.ToArray();
         terrainMesh.triangles = indices.ToArray();
         terrainMesh.SetUVs(0, uvs);
-        
-        // reset the mesh
+
         terrainMesh.RecalculateNormals();
         terrainMesh.RecalculateBounds();
-       
+
         return terrainMesh;
     }
 
