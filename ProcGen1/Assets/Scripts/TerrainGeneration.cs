@@ -78,43 +78,117 @@ public class TerrainGeneration : MonoBehaviour
     {
         int half = generationRadius - 1;
 
+        // We'll first generate all chunk heightmaps, run erosion per-chunk,
+        // then stitch edges between neighboring chunks by averaging shared vertices,
+        // and finally create meshes for each chunk from the stitched heightmaps.
+
+        int mapWidth = Width + 1; // nodes along X
+        int mapHeight = Depth + 1; // nodes along Z
+        int mapLen = mapWidth * mapHeight;
+
+        var chunkMaps = new Dictionary<(int dx, int dz), (float[] map, int sampleOffsetX, int sampleOffsetZ)>();
+
         for (int dx = -half; dx <= half; dx++)
         {
             for (int dz = -half; dz <= half; dz++)
             {
                 // Start by creating a NoiseAlgorithm for each chunk
                 NoiseAlgorithm chunkNoise = new NoiseAlgorithm();
-                chunkNoise.InitializeNoise(Width + 1, Depth + 1, RandomSeed);
+                chunkNoise.InitializeNoise(mapWidth, mapHeight, RandomSeed);
 
                 // Offset the noise sampling
                 int sampleOffsetX = dx * Width;
                 int sampleOffsetZ = dz * Depth;
-                chunkNoise.InitializePerlinNoise(Frequency, Amplitude, Octaves, 
+                chunkNoise.InitializePerlinNoise(Frequency, Amplitude, Octaves,
                     Lacunarity, Gain, Scale, NormalizeBias);
-                NativeArray<float> terrainHeightMap = new NativeArray<float>((Width + 1) * (Depth + 1), Allocator.Persistent);
-                chunkNoise.setNoise(terrainHeightMap, sampleOffsetX, sampleOffsetZ);
 
-                // If erosion specified, run it on a managed copy of the heightmap
+                // Fill a NativeArray then copy into managed array
+                NativeArray<float> terrainHeightNative = new NativeArray<float>(mapLen, Allocator.Persistent);
+                chunkNoise.setNoise(terrainHeightNative, sampleOffsetX, sampleOffsetZ);
+
+                float[] managed = new float[mapLen];
+                for (int i = 0; i < mapLen; i++) managed[i] = terrainHeightNative[i];
+                terrainHeightNative.Dispose();
+
+                // If erosion specified, run it on the managed heightmap
                 if (erosion != null && erosionIterations > 0)
                 {
-                    int mapSize = Width + 1; // number of nodes along one side
-                    int len = terrainHeightMap.Length;
-                    float[] managed = new float[len];
-                    for (int i = 0; i < len; i++) managed[i] = terrainHeightMap[i];
-
-                    // Use a deterministic per-chunk seed so neighboring chunks differ
                     int originalSeed = erosion.seed;
                     erosion.seed = RandomSeed + sampleOffsetX * 73856093 ^ sampleOffsetZ * 19349663;
 
-                    // Erode: map uses indexing x * mapSize + z
-                    erosion.Erode(managed, mapSize, erosionIterations, true);
+                    // Erode: map uses indexing x * mapHeight + z
+                    erosion.Erode(managed, mapWidth, mapHeight, erosionIterations, true);
 
-                    // restore seed
                     erosion.seed = originalSeed;
-
-                    // copy back into NativeArray
-                    for (int i = 0; i < len; i++) terrainHeightMap[i] = managed[i];
                 }
+
+                chunkMaps[(dx, dz)] = (managed, sampleOffsetX, sampleOffsetZ);
+            }
+        }
+
+        // Stitch seams: average shared vertices between neighboring chunks (right and forward neighbors)
+        for (int dx = -half; dx <= half; dx++)
+        {
+            for (int dz = -half; dz <= half; dz++)
+            {
+                var key = (dx, dz);
+                if (!chunkMaps.ContainsKey(key)) continue;
+
+                var entry = chunkMaps[key].map;
+
+                // Stitch with chunk to the +X (right)
+                var rightKey = (dx + 1, dz);
+                if (chunkMaps.ContainsKey(rightKey))
+                {
+                    var right = chunkMaps[rightKey].map;
+                    // shared seam: left's x = Width, right's x = 0
+                    int leftX = Width;
+                    int rightX = 0;
+                    for (int z = 0; z < mapHeight; z++)
+                    {
+                        int leftIdx = leftX * mapHeight + z;
+                        int rightIdx = rightX * mapHeight + z;
+                        float avg = (entry[leftIdx] + right[rightIdx]) * 0.5f;
+                        entry[leftIdx] = avg;
+                        right[rightIdx] = avg;
+                    }
+                }
+
+                // Stitch with chunk to the +Z (forward)
+                var forwardKey = (dx, dz + 1);
+                if (chunkMaps.ContainsKey(forwardKey))
+                {
+                    var forward = chunkMaps[forwardKey].map;
+                    // shared seam: current's z = Depth, forward's z = 0
+                    int zCurrent = Depth;
+                    int zForward = 0;
+                    for (int x = 0; x < mapWidth; x++)
+                    {
+                        int idxCurrent = x * mapHeight + zCurrent;
+                        int idxForward = x * mapHeight + zForward;
+                        float avg = (entry[idxCurrent] + forward[idxForward]) * 0.5f;
+                        entry[idxCurrent] = avg;
+                        forward[idxForward] = avg;
+                    }
+                }
+            }
+        }
+
+        // Create meshes from stitched heightmaps
+        for (int dx = -half; dx <= half; dx++)
+        {
+            for (int dz = -half; dz <= half; dz++)
+            {
+                var key = (dx, dz);
+                if (!chunkMaps.ContainsKey(key)) continue;
+
+                var tuple = chunkMaps[key];
+                float[] managed = tuple.map;
+                int sampleOffsetX = tuple.sampleOffsetX;
+                int sampleOffsetZ = tuple.sampleOffsetZ;
+
+                NativeArray<float> terrainHeightMap = new NativeArray<float>(mapLen, Allocator.Persistent);
+                for (int i = 0; i < mapLen; i++) terrainHeightMap[i] = managed[i];
 
                 // Create the mesh and set it to a new terrain GameObject
                 GameObject chunkTerrain = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -139,8 +213,12 @@ public class TerrainGeneration : MonoBehaviour
                 float areaZMin = sampleOffsetZ;
                 float areaZMax = sampleOffsetZ + Depth;
                 objectGenerator.GenerateObjects(areaXMin, areaXMax, areaZMin, areaZMax);
+
+                // free managed map to allow GC
+                // (we could Remove key but we'll let scope end)
             }
         }
+
         NoiseAlgorithm.OnExit();
     }
 
