@@ -1,4 +1,4 @@
- A small procedural generation project. A large landscape is procedurally generated, and then each chunk simulates rain erosion over thousands of years to create realistic natural terrain.
+ A small procedural generation project. A large landscape is procedurally generated, and then each chunk simulates rain erosion over thousands of years to create less noisy, more realistic natural terrain.
 
  <img width="1275" height="524" alt="image" src="https://github.com/user-attachments/assets/b118cdfe-1d74-421a-9fe7-36713f13fc93" />
 
